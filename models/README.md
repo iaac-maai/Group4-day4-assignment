@@ -13,135 +13,105 @@ tags:
   - ai-methods-1
 metrics:
   - map50
+  - map
 ---
 
-# RC damage segmenter: outlines cracks, spalling, exposed and corroded rebar and crushing on photos of concrete structures
+# RC damage segmentation: cracks, spalling, exposed and corroded rebar, crushing
 
-This model finds and outlines five types of damage on photos of reinforced-concrete structures: **crack, spalling, rebar exposure, rebar corrosion and concrete crushing**. For every damage region it returns a mask, a box, a class and a confidence. It is meant for facility managers and inspectors who need to **screen many photos and decide which elements an engineer should look at first**. It is a YOLO26n-seg (… parameters) fine-tuned from `yolo26n-seg.pt` (pretrained on COCO) on 2,119 annotated photos. It was built as a course assignment for AI Methods I (IAAC MaAI 2026/27).
+This model outlines **five types of damage on photos of reinforced concrete**: crack, spalling, exposed rebar, corroded rebar and crushing. It is meant to **sort inspection photos**, so that an engineer looks at the worst ones first. It is a YOLO26n-seg model (3.1 M parameters, pretrained on COCO), fine-tuned on the *Reinforced concrete structure segmentation dataset 2119* (Wang, 2026).
 
-- **GitHub repository (full pipeline):** https://github.com/iaac-maai/Group4-day4-assignment
-- **Team:** Group 4
+**Team:** Group 4 – Luis, Fawad, Hetashri, Daria · AI Methods I, IAAC MaAI 2026/27 · **Code:** https://github.com/iaac-maai/Group4-day4-assignment
 
 ## Model at a glance
 
-![Predictions next to the ground truth](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/predictions.png)
+![Test images: truth vs prediction](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/09_test_predictions.png)
 
-*Test photos: ground truth (middle) and prediction (right), from the best (top) to the worst (bottom). TODO: one sentence on the mistakes in the bottom rows.*
+*Test images, annotation on the left, prediction on the right. Top: 4 random images, segmented well. Bottom: the 4 worst. Typical mistakes are a right outline with the wrong class and cracks cut into different pieces than the annotation.*
 
-| Model | mask mAP50 (test) | mask mAP50-95 (test) | crack pixel IoU (test) |
-|---|---|---|---|
-| Baseline: pretrained YOLO26n-seg, no fine-tuning | 0.000 | 0.000 | – |
-| Baseline: rule-based crack detector | – | – | … |
-| **This model** | **…** | **…** | **…** |
+![Per-class AP on the test set](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/08_test_per_class.png)
 
-![Per-class AP](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/per_class_ap.png)
+*Good on the frequent classes (crack, corrosion: AP50 about 0.8), weak on the rare ones (about 0.2–0.3), which are also the most severe. Right: much better than simple rules (pixel IoU 0.77 vs 0.20 for cracks).*
 
-*TODO: the strongest and the weakest class.*
+| Test set (303 images) | mask mAP50 | mask mAP50-95 |
+|---|---|---|
+| Pretrained YOLO26n-seg, no fine-tuning | 0.00 | 0.00 |
+| **This model** | **0.478** | **0.301** |
+
+At the recommended threshold **0.30**: precision **0.75**, recall **0.69**.
 
 ## Intended use
 
-- **Intended users and use:** facility managers, inspectors and researchers who **screen** photos of RC structures (buildings, parking garages, bridges) to find and rank the photos that show damage, before an engineer looks at them.
-- **Out-of-scope uses:** structural safety or load-capacity decisions on its own; measuring crack widths or damage areas in m² (there is no scale); other materials (masonry, steel, timber, asphalt); aerial or thermal images; any decision about individual people.
+- **Intended users and use:** facility managers, inspectors and researchers who **screen** photos of RC structures (buildings, parking garages, bridges) to find and rank the photos that show damage, before an engineer looks at them. Always with a human looking at every photo.
+- **Out-of-scope uses:** structural safety or load-capacity decisions on its own, or declaring an element safe ("no damage found" is not "no damage"); measuring crack widths or damaged areas in m² (there is no scale); other materials (masonry, steel, timber, asphalt); aerial, thermal or night images; any decision about individual people.
 
 ## Model details
 
 | | |
 |---|---|
-| **Task** | Instance segmentation |
-| **Architecture** | YOLO26n-seg |
-| **Parameters** | … (all trainable) |
+| **Architecture** | YOLO26n-seg (Ultralytics), 3.1 M parameters |
 | **Base model** | `yolo26n-seg.pt`, pretrained on COCO |
-| **Input** | One RGB photo, resized by Ultralytics to … px (the training image size) |
-| **Output** | Per damage region: mask (polygon), box, class, confidence |
-| **Recommended confidence threshold** | … (see *Choosing a confidence threshold*) |
-| **Files** | `model.pt` (weights + class names), `config.json` (image size, threshold, versions), `training_log.csv` (per-epoch metrics), figures |
-| **Library versions** | ultralytics …, torch …, Python … |
+| **Input** | RGB image, resized to 640 px (longest side) |
+| **Output** | per damage: outline (mask), box, class, confidence |
+| **Versions** | ultralytics 8.4.210, torch 2.15.0, Python 3.12 |
 
-### Classes
-
-| ID | Class | Definition (our reading of the dataset's classes; colour in the source masks) |
+| ID | Class | Definition |
 |---|---|---|
-| 0 | crack | Linear fracture in the concrete surface (red in the source masks) |
-| 1 | spalling | Concrete broken off the surface, without visible reinforcement (green) |
-| 2 | rebar_exposure | Reinforcing steel visible because the cover is lost (magenta) |
-| 3 | rebar_corrosion | Visible rust on reinforcement or rust staining (blue) |
-| 4 | crushing | Concrete crushed under compression, typically at column ends or joints (yellow) |
-
-Each instance is a **connected region** of one class in the source masks: a crack with a gap is two instances, and a closed crack network is one polygon.
+| 0 | `crack` | a crack line, hairline to wide |
+| 1 | `spalling` | concrete broken off, no visible rebar |
+| 2 | `rebar_exposure` | visible rebar, not (or barely) rusted |
+| 3 | `rebar_corrosion` | visible rusted rebar |
+| 4 | `crushing` | concrete crushed under compression |
 
 ## Training data
 
-| | |
-|---|---|
-| **Dataset** | Reinforced concrete structure segmentation dataset 2119 (Wang, 2026) |
-| **Source** | [Mendeley Data](https://data.mendeley.com/datasets/2vkm6k4cfg/1), DOI 10.17632/2vkm6k4cfg.1 |
-| **Licence** | CC BY 4.0 |
-| **Size** | … images (train … / validation … / test …); instances: crack …, spalling …, rebar exposure …, rebar corrosion …, crushing … |
-| **Coverage** | Photos of damaged RC structures collected by the dataset authors from public datasets; mostly close-ups of damage, various structures, cameras and lighting |
-| **Preparation** | Colour masks converted to polygons; photos resized to at most 1,280 px; near-duplicates (perceptual hash) kept in the same split; split 70/15/15, stratified by class |
+Wang, J. (2026), *Reinforced concrete structure segmentation dataset 2119*, Mendeley Data, V1, [doi:10.17632/2vkm6k4cfg.1](https://doi.org/10.17632/2vkm6k4cfg.1), CC BY 4.0. 2,119 photos of damaged RC structures collected by the authors from public datasets, with 3,124 polygons (crack 1,833, spalling 282, rebar exposure 89, rebar corrosion 832, crushing 88). Every photo shows damage; mostly close-ups, various structures, cameras and lighting.
 
-![Dataset overview](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/dataset_overview.png)
+**Split by duplicate group:** many photos are flipped, rotated or cropped copies of each other (77 % of the images are in a group). We grouped copies (perceptual hash + ResNet18 features) and kept every group in one split: train 1,513 / validation 303 / test 303 images.
 
 ## Training procedure
 
-- **Settings:** fine-tuned from `yolo26n-seg.pt`, up to 50 epochs with early stopping (patience 15), batch …, image size …, Ultralytics default optimiser and learning-rate schedule, seed 0.
-- **Augmentation:** Ultralytics defaults (mosaic, horizontal flips, scaling, translation, HSV colour changes).
-- **Experiment:** image size 640 vs. 960, compared on validation: TODO result.
-- **Hardware and time:** Google Colab, NVIDIA T4 GPU, … minutes.
-- **Model selection:** the epoch with the best validation fitness (`best.pt`); the test set was used once, at the end.
+50 epochs (patience 15), batch 16, image size 640, Ultralytics default augmentation, seed 42, on an Apple M4 laptop GPU (90 min). Best epoch: 47. An experiment with image size 416 was 0.024 mask mAP50 worse on validation, so we kept 640.
 
-![Training curves](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/training_curves.png)
+![Training curves](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/04_training_curves.png)
 
-*TODO: still learning? overfitting? best epoch?*
+*Validation mAP rises fast for 20 epochs, then slowly to 0.56. The validation loss stays flat while the training loss keeps falling: beginning overfitting.*
 
 ## Evaluation
 
-Test set: … photos never seen during training or model selection.
+| Class (test polygons) | mask AP50 | mask AP50-95 |
+|---|---|---|
+| crack (283) | **0.83** | 0.50 |
+| spalling (34) | 0.28 | 0.16 |
+| rebar_exposure (12) | 0.28 | 0.20 |
+| rebar_corrosion (98) | **0.78** | 0.52 |
+| crushing (11) | 0.22 | 0.12 |
 
-| Metric (test) | Pretrained YOLO26n-seg | Rule-based crack detector | This model |
-|---|---|---|---|
-| mask mAP50 | 0.000 | – | … |
-| mask mAP50-95 | 0.000 | – | … |
-| box mAP50 | 0.000 | – | … |
-| mask precision / recall at the recommended threshold | – | – | … / … |
-| crack pixel IoU | – | … | … |
+![Confusion matrix](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/05_confusion_matrix_val.png)
 
-**Per class (test):**
+*Validation set; columns = true class, rows = prediction. Last row = missed damage (29 % of cracks, 40 % of spalling). Last column = false alarms (outlines where no damage is annotated): 57 % of them are cracks, because joints, shadows and edges look like cracks. Exposed rebar is never recognised: 58 % is called corrosion, since the classes differ only by rust and corrosion has ten times more training examples.*
 
-| Class | Instances | mask precision | mask recall | mask AP50 | mask AP50-95 |
-|---|---|---|---|---|---|
-| crack | … | … | … | … | … |
-| spalling | … | … | … | … | … |
-| rebar_exposure | … | … | … | … | … |
-| rebar_corrosion | … | … | … | … | … |
-| crushing | … | … | … | … | … |
+![Failures](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/06_failures_val.png)
 
-![Confusion matrix](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/confusion_matrix.png)
+*The worst validation images: cracks cut into different pieces, exposed bars called corrosion, several bars drawn as one spalling area.*
 
-**Where it fails:** TODO (your own reading of the failure gallery): e.g. confusion between rebar exposure and corrosion, missed hairline cracks, joints or stains taken for cracks, dark or wet surfaces.
+![Threshold sweep](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/07_threshold_sweep.png)
 
-![Failure cases](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/failures.png)
+*Threshold = the lowest one with at least 70 % precision on validation: **0.30**. Exposed rebar has recall 0 at every threshold.*
 
-### Choosing a confidence threshold
+![Application: bridge photos ranked](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmentation/resolve/main/10_application_bridge.png)
 
-A missed rebar or crushed zone costs more than a photo an engineer has to dismiss, so the threshold maximises the **F2 score** (recall counts twice) of the mean precision and recall curves on the **validation** set: **conf = …** (validation precision …, recall …).
-
-![Threshold sweep](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/threshold_sweep.png)
-
-### Application: an inspection list
-
-![Inspection list](https://huggingface.co/iaac-maai/day4-group4-rc-damage-segmenter/resolve/main/application.png)
-
-*New photos (not in the dataset), ranked by the most severe damage type found and then by the damaged share of the photo. TODO: one sentence.*
+*44 new photos of a damaged bridge (Achim Hering, Wikimedia Commons, CC BY 3.0), ranked by the most severe damage found. Ranks 2 and 4 are right, rank 1 is a false alarm (shadowed pier edge), and one photo with clearly corroded bars was missed.*
 
 ## Limitations and biases
 
-- **Data:** photos collected from public datasets, mostly close-ups of damage; few photos of intact concrete, so false alarms on healthy surfaces are probably underestimated. Unknown regions and structure types.
-- **Imbalance:** rebar exposure and crushing have fewer than 100 instances each; their scores are uncertain and probably lower than for cracks and corrosion.
-- **Split:** near-duplicates are grouped, but different photos of the same structure may be in different splits, so the test score may be optimistic.
-- **Labels:** instances are connected regions of semantic masks; the line between rebar exposure and corrosion is a judgement call of the annotator.
-- **Image conditions:** sensitive to scale (hairline cracks), lighting, wet surfaces, paint, graffiti, formwork marks and joints.
+- **Rare classes are weak** (AP50 0.22–0.28), and they are the severe ones: rebar exposure and crushing have fewer than 100 polygons each.
+- **No intact concrete in the data:** every photo shows damage, so false alarms on healthy surfaces are probably underestimated.
+- **Optimistic for new buildings:** many test crack close-ups still resemble training photos.
+- **Unknown sources:** the photos come from unnamed public datasets; two of our "new" bridge photos were in it.
+- **Labels:** inconsistent granularity (one crack vs several pieces); the line between rebar exposure and corrosion is a judgement call of the annotator.
+- **Image conditions:** shadows, joints, edges and rust stains from steel parts caused false alarms on the bridge photos; wet surfaces, paint or graffiti are probably also a problem.
 - **No scale:** damaged areas are shares of the photo, not of the element.
+- Rare-class scores rest on 11–34 test polygons; one training run per setting.
 
 ## Ethics and privacy
 
@@ -153,20 +123,19 @@ The photos show structures, not people. Do not use the model to make safety deci
 from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
-model = YOLO(hf_hub_download("iaac-maai/day4-group4-rc-damage-segmenter", "model.pt"))
-result = model.predict("wall.jpg", conf=0.25, imgsz=640)[0]     # TODO: recommended conf and imgsz (config.json)
-print(len(result.boxes), "damage regions:", [model.names[int(c)] for c in result.boxes.cls])
-result.save("wall_damage.jpg")                                    # photo with the masks drawn
+model = YOLO(hf_hub_download("iaac-maai/day4-group4-rc-damage-segmentation", "model.pt"))
+result = model.predict("column.jpg", conf=0.30, imgsz=640)[0]
+for cls, conf in zip(result.boxes.cls, result.boxes.conf):
+    print(model.names[int(cls)], round(float(conf), 2))
+result.save("column_damage.jpg")   # image with the outlines drawn
 ```
 
-⚠️ `.pt` files are Python pickles and can execute code when loaded: only load models from sources you trust. Use the library versions listed above.
+`.pt` files can run code when loaded: only load models you trust.
 
 ## Reproducibility
 
-The full pipeline is in the GitHub repository: https://github.com/iaac-maai/Group4-day4-assignment. Run `notebook/object_detection.ipynb` with the packages in `requirements.txt` (on Colab with a T4 GPU for training; with `TRAIN = False` on a CPU).
+Run `notebook/object_detection.ipynb` from the GitHub repository with `requirements.txt`. With `TRAIN = False` it downloads this model instead of training.
 
 ## Authors and licence
 
-Group 4. Course assignment for **AI Methods I: Machine Learning for the Built Environment**, IAAC MaAI 2026/27.
-
-Model released under **AGPL-3.0** (fine-tuned from Ultralytics YOLO26, which is AGPL-3.0). The data is subject to its own licence: **CC BY 4.0**, Wang, J. (2026). *Reinforced concrete structure segmentation dataset 2119*. Mendeley Data, V1. DOI 10.17632/2vkm6k4cfg.1.
+Luis, Fawad, Hetashri, Daria (Group 4), IAAC MaAI 2026/27. Model: **AGPL-3.0** (fine-tuned from Ultralytics YOLO). Data: Wang, J. (2026), Mendeley Data, V1, CC BY 4.0; please cite Wang & Ueda (2025), *Structural Concrete* 26(5), 5511–5534. Bridge photos: Achim Hering, CC BY 3.0.
