@@ -5,6 +5,10 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
+# Python cache
+__pycache__/
+*.py[cod]
+
 # data: downloaded by the notebook, not committed
 data/*
 !data/.gitkeep

@@ -1,9 +1,15 @@
-torch==2.14.1
-ultralytics==8.4.190
+# Pinned to the versions this notebook was set up with (Python 3.12). torch and ultralytics are pinned exactly:
+# the model card refers to them. If the training runs on Colab or Kaggle, update these to the versions used there.
+torch==2.15.0
+torchvision==0.29.2
+ultralytics==8.4.210
+numpy==2.5.4
 pandas==3.0.6
-numpy==2.5.3
 matplotlib==3.11.2
 scikit-learn==1.9.1
-opencv-python==4.14.0.94
-huggingface_hub==2.2.0
-jupyter
+opencv-python-headless==5.0.0.93
+pillow==12.3.0
+pyyaml==6.0.3
+huggingface_hub==2.4.0
+ipykernel==7.4.0
+requests==2.34.2
